@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 
+
 def coletar_fluxo_caixa_livre(ticker, anos=5):
     try:
         empresa = yf.Ticker(ticker)
@@ -34,3 +35,37 @@ def coletar_fluxo_caixa_livre(ticker, anos=5):
 
     except Exception as e:
         raise ValueError(f"Erro ao coletar fluxo de caixa livre: {e}")
+
+
+def calcular_vpl_dcf(ticker, wacc, crescimento_perpetuo, anos_projecao=5):
+    try:
+        df_fluxo = coletar_fluxo_caixa_livre(ticker, anos_projecao)
+
+        df_fluxo['Valor Presente Fluxo'] = df_fluxo['Fluxo de Caixa Livre Projetado'] / ((1 + wacc) ** df_fluxo['Ano'])
+
+        valor_terminal = df_fluxo['Fluxo de Caixa Livre Projetado'].iloc[-1] * (1 + crescimento_perpetuo) / (wacc - crescimento_perpetuo)
+        valor_presente_terminal = valor_terminal / ((1 + wacc) ** anos_projecao)
+
+        vpl_total = df_fluxo['Valor Presente Fluxo'].sum() + valor_presente_terminal
+
+        empresa = yf.Ticker(ticker)
+        info = empresa.info
+        shares_outstanding = info.get('sharesOutstanding')
+        if not shares_outstanding or shares_outstanding == 0:
+            raise ValueError("Número de ações em circulação não disponível ou inválido.")
+
+        valor_justo_por_acao = vpl_total / shares_outstanding
+
+        df_fluxo['Valor Presente Fluxo'] = df_fluxo['Valor Presente Fluxo'].round(2)
+        df_fluxo = df_fluxo.rename(columns={'Fluxo de Caixa Livre Projetado': 'FCF Projetado (US$)'})
+
+        return {
+            'valor_justo': valor_justo_por_acao,
+            'fluxo': df_fluxo,
+            'valor_terminal': valor_terminal,
+            'valor_presente_terminal': valor_presente_terminal,
+            'vpl_total': vpl_total
+        }
+
+    except Exception as e:
+        raise ValueError(f"Erro ao calcular VPL DCF: {e}")
