@@ -30,16 +30,20 @@ def valuation_endpoint(
     crescimento: float = Query(0.02, description="Crescimento perpétuo"),
     anos: int = Query(5, description="Anos de projeção")
 ):
-    wacc = calcular_wacc(ticker, rf, rm)
-    dcf = calcular_vpl_dcf(ticker, wacc, crescimento, anos)
-    multiplos = obter_multiplicadores(ticker)
-    resumo = gerar_resumo_valuation(ticker, dcf['valor_justo'], multiplos)
+    try:
+        wacc = calcular_wacc(ticker, rf, rm)
+        dcf = calcular_vpl_dcf(ticker, wacc, crescimento, anos)
+        multiplos = obter_multiplicadores(ticker)
+        resumo = gerar_resumo_valuation(ticker, dcf['valor_justo'], multiplos)
 
-    return {
-        "ticker": ticker.upper(),
-        "valor_justo": round(dcf['valor_justo'], 2),
-        "wacc": round(wacc, 4),
-        "resumo": resumo.to_dict(orient="records"),
-        "fluxo": dcf["fluxo"].to_dict(orient="records"),
-        "multiplos": multiplos.to_dict(orient="records")
-    }
+        return {
+            "ticker": ticker.upper(),
+            "valor_justo": round(dcf['valor_justo'], 2),
+            "wacc": round(wacc, 4),
+            "resumo": resumo.to_dict(orient="records"),
+            "fluxo": dcf["fluxo"].to_dict(orient="records"),
+            "multiplos": multiplos.to_dict(orient="records")
+        }
+
+    except Exception as e:
+        return {"erro": str(e)}
