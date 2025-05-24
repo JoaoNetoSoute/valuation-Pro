@@ -12,6 +12,9 @@ def coletar_fluxo_caixa_livre(ticker, anos=5):
         if response.status_code != 200:
             raise ValueError(f"Erro ao acessar API FMP: {response.status_code} - {response.text}")
 
+        if not response.text:
+            raise ValueError("A resposta da API está vazia. Possível limite atingido ou erro de conexão.")
+
         data = response.json()
 
         if not data:
@@ -54,6 +57,9 @@ def calcular_vpl_dcf(ticker, wacc, crescimento_perpetuo, anos_projecao=5):
         profile_resp = requests.get(info_url)
         if profile_resp.status_code != 200:
             raise ValueError("Erro ao buscar dados da empresa no FMP.")
+
+        if not profile_resp.text:
+            raise ValueError("Resposta da API para perfil da empresa está vazia.")
 
         info = profile_resp.json()
         if not info or 'mktCap' not in info[0] or 'price' not in info[0]:
