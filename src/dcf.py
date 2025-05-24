@@ -20,6 +20,8 @@ def coletar_fluxo_caixa_livre(ticker, anos=5):
         cf = empresa.cashflow
         
         # Para simplificar, somamos os últimos 4 trimestres para estimar o fluxo anual
+       if 'Free Cash Flow' not in cf.index:
+        raise ValueError(f"O campo 'Free Cash Flow' não está disponível para o ticker {ticker}.")
         fluxo_caixa_livre_ultimos_4t = cf.loc['Free Cash Flow'].rolling(window=4, axis=1).sum().iloc[:, -1]
         
         # Usamos o último valor anual como base para projetar crescimento
