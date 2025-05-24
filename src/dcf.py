@@ -1,34 +1,35 @@
-import yfinance as yf
+import requests
 import pandas as pd
+
+API_KEY = rrHkxpTybc90PICXVIt474aeofUicVl9  # Substitua pela sua chave da API do FinancialModelingPrep
 
 
 def coletar_fluxo_caixa_livre(ticker, anos=5):
     try:
-        empresa = yf.Ticker(ticker)
-        cf = empresa.cashflow
+        url = f"https://financialmodelingprep.com/api/v3/cash-flow-statement/{ticker.upper()}?limit={anos}&apikey={API_KEY}"
+        response = requests.get(url)
 
-        if cf.empty or cf.shape[0] == 0:
-            raise ValueError(f"O cashflow retornado está vazio para o ticker {ticker}.")
+        if response.status_code != 200:
+            raise ValueError(f"Erro ao acessar API FMP: {response.status_code} - {response.text}")
 
-        fcf_series = None
+        data = response.json()
 
-        if 'Free Cash Flow' in cf.index:
-            fcf_series = cf.loc['Free Cash Flow']
-        elif ('Total Cash From Operating Activities' in cf.index and 'Capital Expenditures' in cf.index):
-            fcf_series = cf.loc['Total Cash From Operating Activities'] + cf.loc['Capital Expenditures']
+        if not data:
+            raise ValueError(f"Nenhum dado de fluxo de caixa retornado para o ticker {ticker}.")
 
-        if fcf_series is None or fcf_series.empty:
-            raise ValueError(f"Não foi possível estimar o fluxo de caixa livre para o ticker {ticker}.")
+        fcf_list = [item['freeCashFlow'] for item in data if 'freeCashFlow' in item and item['freeCashFlow'] is not None]
 
-        fluxo_base = fcf_series.rolling(window=4, axis=1).sum().iloc[:, -1]
+        if len(fcf_list) < anos:
+            raise ValueError("Dados insuficientes de FCF para projeção.")
 
+        fluxo_base = fcf_list[0]  # último ano mais recente
         taxa_crescimento = 0.05
         anos_proj = range(1, anos + 1)
         fluxo_proj = [fluxo_base * ((1 + taxa_crescimento) ** ano) for ano in anos_proj]
 
         df_fluxo = pd.DataFrame({
             'Ano': anos_proj,
-            'Fluxo de Caixa Livre Projetado': fluxo_proj
+            'FCF Projetado (US$)': fluxo_proj
         })
 
         return df_fluxo
@@ -41,23 +42,28 @@ def calcular_vpl_dcf(ticker, wacc, crescimento_perpetuo, anos_projecao=5):
     try:
         df_fluxo = coletar_fluxo_caixa_livre(ticker, anos_projecao)
 
-        df_fluxo['Valor Presente Fluxo'] = df_fluxo['Fluxo de Caixa Livre Projetado'] / ((1 + wacc) ** df_fluxo['Ano'])
+        df_fluxo['Valor Presente Fluxo'] = df_fluxo['FCF Projetado (US$)'] / ((1 + wacc) ** df_fluxo['Ano'])
 
-        valor_terminal = df_fluxo['Fluxo de Caixa Livre Projetado'].iloc[-1] * (1 + crescimento_perpetuo) / (wacc - crescimento_perpetuo)
+        valor_terminal = df_fluxo['FCF Projetado (US$)'].iloc[-1] * (1 + crescimento_perpetuo) / (wacc - crescimento_perpetuo)
         valor_presente_terminal = valor_terminal / ((1 + wacc) ** anos_projecao)
 
         vpl_total = df_fluxo['Valor Presente Fluxo'].sum() + valor_presente_terminal
 
-        empresa = yf.Ticker(ticker)
-        info = empresa.info
-        shares_outstanding = info.get('sharesOutstanding')
-        if not shares_outstanding or shares_outstanding == 0:
-            raise ValueError("Número de ações em circulação não disponível ou inválido.")
+        # Buscar número de ações usando FMP
+        info_url = f"https://financialmodelingprep.com/api/v3/profile/{ticker.upper()}?apikey={API_KEY}"
+        profile_resp = requests.get(info_url)
+        if profile_resp.status_code != 200:
+            raise ValueError("Erro ao buscar dados da empresa no FMP.")
+
+        info = profile_resp.json()
+        if not info or 'mktCap' not in info[0] or 'price' not in info[0]:
+            raise ValueError("Informações incompletas no perfil da empresa.")
+
+        shares_outstanding = info[0]['mktCap'] / info[0]['price']
 
         valor_justo_por_acao = vpl_total / shares_outstanding
 
         df_fluxo['Valor Presente Fluxo'] = df_fluxo['Valor Presente Fluxo'].round(2)
-        df_fluxo = df_fluxo.rename(columns={'Fluxo de Caixa Livre Projetado': 'FCF Projetado (US$)'})
 
         return {
             'valor_justo': valor_justo_por_acao,
