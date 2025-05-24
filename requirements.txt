@@ -1,1 +1,6 @@
-requirements.txt
+fastapi==0.111.0
+uvicorn==0.29.0
+yfinance==0.2.36
+pandas==2.2.2
+numpy==1.26.4
+requests_cache==1.1.1
