@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 
-API_KEY = rrHkxpTybc90PICXVIt474aeofUicVl9  # Substitua pela sua chave da API do FinancialModelingPrep
+API_KEY = ?apikey=rrHkxpTybc90PICXVIt474aeofUicVl9  # Substitua pela sua chave da API do FinancialModelingPrep
 
 
 def coletar_fluxo_caixa_livre(ticker, anos=5):
