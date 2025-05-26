@@ -30,8 +30,13 @@ def estimar_fcf_adaptativo(dados):
         elif roe > 0 and book_value > 0:
             fcf = roe * book_value
             base = "ROE × Patrimônio"
+        elif market_cap > 0:
+            fcf = market_cap * 0.05
+            base = "Estimativa genérica (5% do MarketCap)"
         else:
-            raise ValueError(f"Não foi possível estimar o FCF com os dados disponíveis.\nCampos recebidos: marketCap={market_cap}, P/L={pe_ratio}, ROE={roe}, bookValue={book_value}")
+            raise ValueError(
+                f"Não foi possível estimar o FCF com os dados disponíveis.\nCampos recebidos: marketCap={market_cap}, P/L={pe_ratio}, ROE={roe}, bookValue={book_value}"
+            )
 
         return fcf, base
     except Exception as e:
