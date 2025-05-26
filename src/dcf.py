@@ -5,7 +5,7 @@ import logging
 # Configuração básica de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-API_KEY_BRAPI = "sC6eE4drp7whvmu6qeg1vM"  # Substitua pela sua chave da API da Brapi.dev
+API_KEY_BRAPI = "sC6eE4drp7whvmu6qeg1vM"
 
 
 def coletar_dados_brapi(ticker):
@@ -18,7 +18,7 @@ def coletar_dados_brapi(ticker):
 
     if not response.text:
         logging.error(f"Resposta vazia da API Brapi para o ticker {ticker}.")
-        raise ValueError(f"Resposta vazia da API Brapi para o ticker {ticker}. Possível instabilidade ou limite de uso atingido.")
+        raise ValueError(f"Resposta vazia da API Brapi para o ticker {ticker}.")
 
     data = response.json()
     if not data or 'results' not in data or not data['results']:
@@ -69,7 +69,7 @@ def calcular_vpl_dcf(ticker, wacc, crescimento_perpetuo, anos_projecao=5):
         fluxo_proj = [fcf_base * ((1 + taxa_crescimento) ** ano) for ano in anos_proj]
 
         df_fluxo = pd.DataFrame({
-            'Ano': anos_proj,
+            'Ano': list(anos_proj),
             'FCF Projetado (R$)': fluxo_proj
         })
 
@@ -93,12 +93,12 @@ def calcular_vpl_dcf(ticker, wacc, crescimento_perpetuo, anos_projecao=5):
         logging.info(f"Valuation finalizado para {ticker} — Valor justo por ação: {valor_justo_por_acao:.2f}")
 
         return {
-            'valor_justo': round(valor_justo_por_acao, 2),
-            'metodo_fcf': metodo,
-            'fluxo': df_fluxo,
-            'valor_terminal': round(valor_terminal, 2),
-            'valor_presente_terminal': round(valor_presente_terminal, 2),
-            'vpl_total': round(vpl_total, 2)
+            'valor_justo': float(round(valor_justo_por_acao, 2)),
+            'metodo_fcf': str(metodo),
+            'fluxo': df_fluxo.to_dict(orient='records'),
+            'valor_terminal': float(round(valor_terminal, 2)),
+            'valor_presente_terminal': float(round(valor_presente_terminal, 2)),
+            'vpl_total': float(round(vpl_total, 2))
         }
 
     except Exception as e:
