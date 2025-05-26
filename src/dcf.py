@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 
-API_KEY_BRAPI = "eJGEyu8vVHctULdVdHYzQd"  # Substitua pela sua chave da API da Brapi.dev
+API_KEY_BRAPI = "sC6eE4drp7whvmu6qeg1vM"  # Substitua pela sua chave da API da Brapi.dev
 
 
 def coletar_dados_brapi(ticker):
