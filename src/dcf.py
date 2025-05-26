@@ -10,6 +10,9 @@ def coletar_dados_brapi(ticker):
     if response.status_code != 200:
         raise ValueError(f"Erro ao acessar a API Brapi: {response.status_code} - {response.text}")
 
+    if not response.text:
+        raise ValueError(f"Resposta vazia da API Brapi para o ticker {ticker}. Possível instabilidade ou limite de uso atingido.")
+
     data = response.json()
     if not data or 'results' not in data or not data['results']:
         raise ValueError(f"Dados não encontrados para o ticker {ticker} na Brapi.")
