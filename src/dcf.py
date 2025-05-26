@@ -19,19 +19,19 @@ def coletar_dados_brapi(ticker):
 
 def estimar_fcf_adaptativo(dados):
     try:
-        market_cap = dados.get("marketCap")
-        pe_ratio = dados.get("priceToEarnings")
-        book_value = dados.get("bookValue")
-        roe = dados.get("roe")
+        market_cap = dados.get("marketCap") or 0
+        pe_ratio = dados.get("priceToEarnings") or 0
+        book_value = dados.get("bookValue") or 0
+        roe = dados.get("roe") or 0
 
-        if pe_ratio and pe_ratio > 0 and market_cap:
+        if market_cap > 0 and pe_ratio > 0:
             fcf = market_cap / pe_ratio
             base = "P/L inverso × MarketCap"
-        elif roe and book_value:
+        elif roe > 0 and book_value > 0:
             fcf = roe * book_value
             base = "ROE × Patrimônio"
         else:
-            raise ValueError("Não foi possível estimar o FCF com os dados disponíveis.")
+            raise ValueError(f"Não foi possível estimar o FCF com os dados disponíveis.\nCampos recebidos: marketCap={market_cap}, P/L={pe_ratio}, ROE={roe}, bookValue={book_value}")
 
         return fcf, base
     except Exception as e:
