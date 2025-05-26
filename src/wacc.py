@@ -1,55 +1,59 @@
-import yfinance as yf
+import requests
+from bs4 import BeautifulSoup
+import logging
 
-def calcular_wacc(ticker: str, rf: float = 0.04, rm: float = 0.10) -> float:
-    """
-    Calcula o WACC (Custo Médio Ponderado de Capital) com base em dados do Yahoo Finance.
-    
-    Parâmetros:
-    - ticker: código da ação (ex: AAPL)
-    - rf: taxa livre de risco
-    - rm: retorno esperado do mercado
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    Retorna:
-    - WACC arredondado (float)
-    """
+def obter_beta_statusinvest(ticker):
     try:
-        empresa = yf.Ticker(ticker)
-        info = empresa.info
+        url = f"https://statusinvest.com.br/acoes/{ticker.lower()}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
 
-        beta = info.get('beta')
-        if beta is None:
-            beta = 1.0  # fallback conservador
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        span = soup.find("strong", string="Beta")
+        if span:
+            beta_valor = span.find_next("span").text.strip().replace(",", ".")
+            beta = float(beta_valor)
+            logging.info(f"Beta encontrado para {ticker.upper()}: {beta}")
+            return beta
 
-        # Custo do capital próprio via CAPM
+        logging.warning(f"Beta não encontrado para {ticker.upper()} na página do Status Invest.")
+        return None
+
+    except Exception as e:
+        logging.exception(f"Erro ao buscar o beta para {ticker.upper()}")
+        return None
+
+def calcular_custo_capital_proprio(beta, rf=0.04, rm=0.10):
+    try:
         ke = rf + beta * (rm - rf)
+        return round(ke, 4)
+    except Exception as e:
+        logging.exception("Erro ao calcular o custo do capital próprio")
+        return 0.1
 
-        # Custo da dívida (estimado) e efeito do imposto
-        kd = 0.08
-        taxa_imposto = 0.34
+def calcular_wacc(ticker, rf=0.04, rm=0.10):
+    try:
+        beta = obter_beta_statusinvest(ticker)
+        if beta is None:
+            raise ValueError("Beta não encontrado.")
 
-        # Estrutura de capital
-        valor_mercado_acao = info.get('marketCap') or 1e9
-        valor_divida = info.get('totalDebt') or 1e8
-        total = valor_mercado_acao + valor_divida
+        ke = calcular_custo_capital_proprio(beta, rf, rm)
+        kd = 0.08  # estimativa conservadora
+        taxa_imposto = 0.34  # imposto médio
 
-        if total == 0:
-            return 0.10  # fallback caso dados ausentes
-
-        peso_acao = valor_mercado_acao / total
-        peso_divida = valor_divida / total
+        peso_acao = 0.7
+        peso_divida = 0.3
 
         wacc = peso_acao * ke + peso_divida * kd * (1 - taxa_imposto)
+        logging.info(f"WACC estimado para {ticker.upper()}: {round(wacc, 4)}")
         return round(wacc, 4)
 
     except Exception as e:
-        print(f"[Erro WACC] Não foi possível calcular para {ticker}: {e}")
-        return 0.10
-
-
-def calcular_custo_capital_proprio(beta: float, rf: float = 0.04, rm: float = 0.10) -> float:
-    """
-    Calcula o custo do capital próprio com o modelo CAPM.
-    
-    Fórmula: ke = rf + beta * (rm - rf)
-    """
-    return round(rf + beta * (rm - rf), 4)
+        logging.exception("Erro ao calcular o WACC")
+        return 0.1
