@@ -1,15 +1,11 @@
-# main.py
-
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from src.dcf import calcular_vpl_dcf
 from src.wacc import calcular_wacc
-from src.comparables import obter_multiplicadores
-from src.valuation_summary import gerar_resumo_valuation
-from fastapi.middleware.cors import CORSMiddleware
+import logging
 
-app = FastAPI(title="Valuation Pro API", version="1.0")
+app = FastAPI()
 
-# Permitir acesso do app móvel (React Native ou navegador)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,32 +14,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 @app.get("/")
-def root():
-    return {"message": "API de Valuation Pro está ativa!"}
+def read_root():
+    return {"mensagem": "API de Valuation Ativa!"}
+
 
 @app.get("/valuation")
-def valuation_endpoint(
-    ticker: str = Query(..., example="AAPL"),
-    rf: float = Query(0.04, description="Taxa livre de risco"),
-    rm: float = Query(0.10, description="Retorno do mercado"),
-    crescimento: float = Query(0.02, description="Crescimento perpétuo"),
+def valuation(
+    ticker: str = Query(..., description="Código do ativo. Ex: PETR4"),
+    rf: float = Query(0.04, description="Taxa livre de risco (ex: 0.04 para 4%)"),
+    rm: float = Query(0.10, description="Retorno esperado do mercado (ex: 0.10 para 10%)"),
+    crescimento: float = Query(0.02, description="Taxa de crescimento perpétuo do FCF"),
     anos: int = Query(5, description="Anos de projeção")
 ):
     try:
         wacc = calcular_wacc(ticker, rf, rm)
-        dcf = calcular_vpl_dcf(ticker, wacc, crescimento, anos)
-        multiplos = obter_multiplicadores(ticker)
-        resumo = gerar_resumo_valuation(ticker, dcf['valor_justo'], multiplos)
-
-        return {
-            "ticker": ticker.upper(),
-            "valor_justo": round(dcf['valor_justo'], 2),
-            "wacc": round(wacc, 4),
-            "resumo": resumo.to_dict(orient="records"),
-            "fluxo": dcf["fluxo"].to_dict(orient="records"),
-            "multiplos": multiplos.to_dict(orient="records")
-        }
+        resultado = calcular_vpl_dcf(ticker, wacc, crescimento, anos)
+        return resultado
 
     except Exception as e:
+        logging.exception("Erro na rota /valuation")
         return {"erro": str(e)}
