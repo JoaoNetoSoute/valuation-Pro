@@ -3,7 +3,7 @@ import math
 import requests
 from bs4 import BeautifulSoup
 
-from wacc import calcular_wacc
+from src.wacc import calcular_wacc
 
 def estimar_fcf_real(ticker):
     try:
