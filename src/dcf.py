@@ -91,4 +91,7 @@ def calcular_valuation_dcf(ticker, rf, rm, crescimento_inicial, anos_crescimento
 
     except Exception as e:
         logging.error("Erro ao calcular VPL DCF", exc_info=True)
-        return {"erro": f"Erro ao calcular VPL DCF: {e}"}
+        return {"erro": str(e)}
+
+# Alias para compatibilidade com o main.py
+calcular_vpl_dcf = calcular_valuation_dcf
