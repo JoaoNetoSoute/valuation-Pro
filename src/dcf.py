@@ -1,106 +1,93 @@
-import requests
-import pandas as pd
 import logging
+import math
+import requests
+from bs4 import BeautifulSoup
 
-# Configuração básica de logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from wacc import calcular_wacc
 
-API_KEY_BRAPI = "sC6eE4drp7whvmu6qeg1vM"
-
-
-def coletar_dados_brapi(ticker):
-    url = f"https://brapi.dev/api/quote/{ticker}?token={API_KEY_BRAPI}"
-    logging.info(f"Coletando dados para o ticker: {ticker}")
-    response = requests.get(url)
-    if response.status_code != 200:
-        logging.error(f"Erro HTTP {response.status_code} ao acessar a API Brapi: {response.text}")
-        raise ValueError(f"Erro ao acessar a API Brapi: {response.status_code} - {response.text}")
-
-    if not response.text:
-        logging.error(f"Resposta vazia da API Brapi para o ticker {ticker}.")
-        raise ValueError(f"Resposta vazia da API Brapi para o ticker {ticker}.")
-
-    data = response.json()
-    if not data or 'results' not in data or not data['results']:
-        logging.warning(f"Dados não encontrados na resposta da Brapi para o ticker {ticker}.")
-        raise ValueError(f"Dados não encontrados para o ticker {ticker} na Brapi.")
-
-    return data['results'][0]
-
-
-def estimar_fcf_adaptativo(dados):
+def estimar_fcf_real(ticker):
     try:
-        market_cap = dados.get("marketCap") or 0
-        pe_ratio = dados.get("priceToEarnings") or 0
-        book_value = dados.get("bookValue") or 0
-        roe = dados.get("roe") or 0
+        logging.info(f"Coletando FCF real histórico de {ticker} via StatusInvest")
+        url = f"https://statusinvest.com.br/acoes/{ticker.lower()}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-        logging.info(f"Estimando FCF com dados: marketCap={market_cap}, P/L={pe_ratio}, ROE={roe}, bookValue={book_value}")
+        script_tags = soup.find_all('script')
+        fcf_data = []
+        for script in script_tags:
+            if 'freeCashFlow' in script.text:
+                start = script.text.find('freeCashFlow')
+                trecho = script.text[start:start + 1000]
+                valores = [int(v.replace('.', '').replace('"', '').replace('R$', '').strip())
+                           for v in trecho.split('value":')[1:6]]
+                fcf_data = valores
+                break
 
-        if market_cap > 0 and pe_ratio > 0:
-            fcf = market_cap / pe_ratio
-            base = "P/L inverso × MarketCap"
-        elif roe > 0 and book_value > 0:
-            fcf = roe * book_value
-            base = "ROE × Patrimônio"
-        elif market_cap > 0:
-            fcf = market_cap * 0.05
-            base = "Estimativa genérica (5% do MarketCap)"
+        if fcf_data:
+            media_fcf = sum(fcf_data) / len(fcf_data)
+            logging.info(f"FCF médio estimado: {media_fcf}")
+            return media_fcf, "Média dos últimos 5 anos via StatusInvest"
         else:
-            raise ValueError(
-                f"Não foi possível estimar o FCF com os dados disponíveis.\nCampos recebidos: marketCap={market_cap}, P/L={pe_ratio}, ROE={roe}, bookValue={book_value}"
-            )
-
-        logging.info(f"FCF estimado: {fcf:.2f} via {base}")
-        return fcf, base
+            raise ValueError("Não foi possível extrair o FCF do site.")
     except Exception as e:
-        logging.exception("Erro na estimativa de FCF")
-        raise ValueError(f"Erro na estimativa de FCF: {e}")
+        logging.warning(f"Erro ao coletar FCF: {e}")
+        return None, "Estimativa genérica baseada em MarketCap (5%)"
 
-
-def calcular_vpl_dcf(ticker, wacc, crescimento_perpetuo, anos_projecao=5):
+def calcular_valuation_dcf(ticker, rf, rm, crescimento, anos):
     try:
-        ticker = ticker.upper()
-        dados = coletar_dados_brapi(ticker)
-        fcf_base, metodo = estimar_fcf_adaptativo(dados)
+        wacc = calcular_wacc(ticker, rf, rm)
+        logging.info(f"WACC para {ticker}: {wacc}")
+    except Exception as e:
+        logging.error("Erro ao calcular o WACC", exc_info=True)
+        return {"erro": f"Erro ao calcular WACC: {e}"}
 
-        taxa_crescimento = crescimento_perpetuo
-        anos_proj = range(1, anos_projecao + 1)
-        fluxo_proj = [fcf_base * ((1 + taxa_crescimento) ** ano) for ano in anos_proj]
+    try:
+        logging.info(f"Coletando dados para o ticker: {ticker}")
+        url = f"https://brapi.dev/api/quote/{ticker}?range=1d&fundamental=true"
+        response = requests.get(url)
+        data = response.json()["results"][0]
 
-        df_fluxo = pd.DataFrame({
-            'Ano': list(anos_proj),
-            'FCF Projetado (R$)': fluxo_proj
-        })
+        market_cap = data.get("marketCap", 0)
+        logging.info(f"MarketCap de {ticker}: {market_cap}")
 
-        df_fluxo['Valor Presente Fluxo'] = df_fluxo['FCF Projetado (R$)'] / ((1 + wacc) ** df_fluxo['Ano'])
+        fcf, metodo_fcf = estimar_fcf_real(ticker)
 
-        valor_terminal = df_fluxo['FCF Projetado (R$)'].iloc[-1] * (1 + crescimento_perpetuo) / (wacc - crescimento_perpetuo)
-        valor_presente_terminal = valor_terminal / ((1 + wacc) ** anos_projecao)
+        if not fcf:
+            fcf = market_cap * 0.05  # fallback
+        logging.info(f"FCF estimado: {fcf} via {metodo_fcf}")
 
-        vpl_total = df_fluxo['Valor Presente Fluxo'].sum() + valor_presente_terminal
+        fluxo = []
+        vpl_fluxo = 0
 
-        if 'marketCap' in dados and 'regularMarketPrice' in dados and dados['regularMarketPrice']:
-            shares_outstanding = dados['marketCap'] / dados['regularMarketPrice']
-        else:
-            logging.error("Não foi possível estimar o número de ações em circulação.")
-            raise ValueError("Não foi possível estimar o número de ações em circulação.")
+        for ano in range(1, anos + 1):
+            fcf_ano = fcf * ((1 + crescimento) ** ano)
+            valor_presente = fcf_ano / ((1 + wacc) ** ano)
+            fluxo.append({
+                "Ano": ano,
+                "FCF Projetado (R$)": fcf_ano,
+                "Valor Presente Fluxo": valor_presente
+            })
+            vpl_fluxo += valor_presente
 
-        valor_justo_por_acao = vpl_total / shares_outstanding
+        valor_terminal = (fcf * ((1 + crescimento) ** (anos + 1))) / (wacc - crescimento)
+        valor_presente_terminal = valor_terminal / ((1 + wacc) ** anos)
+        vpl_total = vpl_fluxo + valor_presente_terminal
 
-        df_fluxo['Valor Presente Fluxo'] = df_fluxo['Valor Presente Fluxo'].round(2)
+        numero_acoes = data.get("numberOfShares", 1)
+        valor_justo = vpl_total / numero_acoes if numero_acoes else 0
 
-        logging.info(f"Valuation finalizado para {ticker} — Valor justo por ação: {valor_justo_por_acao:.2f}")
+        logging.info(f"Valuation finalizado para {ticker} — Valor justo por ação: {valor_justo}")
 
         return {
-            'valor_justo': float(round(valor_justo_por_acao, 2)),
-            'metodo_fcf': str(metodo),
-            'fluxo': df_fluxo.to_dict(orient='records'),
-            'valor_terminal': float(round(valor_terminal, 2)),
-            'valor_presente_terminal': float(round(valor_presente_terminal, 2)),
-            'vpl_total': float(round(vpl_total, 2))
+            "valor_justo": round(valor_justo, 2),
+            "valor_terminal": round(valor_terminal, 2),
+            "valor_presente_terminal": round(valor_presente_terminal, 2),
+            "vpl_total": round(vpl_total, 2),
+            "fluxo": fluxo,
+            "metodo_fcf": metodo_fcf
         }
 
     except Exception as e:
-        logging.exception("Erro ao calcular VPL DCF")
-        raise ValueError(f"Erro ao calcular VPL DCF: {e}")
+        logging.error("Erro ao calcular VPL DCF", exc_info=True)
+        return {"erro": f"Erro ao calcular VPL DCF: {e}"}
