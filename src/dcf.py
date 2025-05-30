@@ -34,7 +34,7 @@ def estimar_fcf_real(ticker):
         logging.warning(f"Erro ao coletar FCF: {e}")
         return None, "Estimativa genérica baseada em MarketCap (5%)"
 
-def calcular_valuation_dcf(ticker, rf, rm, crescimento, anos):
+def calcular_valuation_dcf(ticker, rf, rm, crescimento_inicial, anos_crescimento, crescimento_terminal):
     try:
         wacc = calcular_wacc(ticker, rf, rm)
         logging.info(f"WACC para {ticker}: {wacc}")
@@ -52,16 +52,16 @@ def calcular_valuation_dcf(ticker, rf, rm, crescimento, anos):
         logging.info(f"MarketCap de {ticker}: {market_cap}")
 
         fcf, metodo_fcf = estimar_fcf_real(ticker)
-
         if not fcf:
             fcf = market_cap * 0.05  # fallback
+
         logging.info(f"FCF estimado: {fcf} via {metodo_fcf}")
 
         fluxo = []
         vpl_fluxo = 0
 
-        for ano in range(1, anos + 1):
-            fcf_ano = fcf * ((1 + crescimento) ** ano)
+        for ano in range(1, anos_crescimento + 1):
+            fcf_ano = fcf * ((1 + crescimento_inicial) ** ano)
             valor_presente = fcf_ano / ((1 + wacc) ** ano)
             fluxo.append({
                 "Ano": ano,
@@ -70,8 +70,9 @@ def calcular_valuation_dcf(ticker, rf, rm, crescimento, anos):
             })
             vpl_fluxo += valor_presente
 
-        valor_terminal = (fcf * ((1 + crescimento) ** (anos + 1))) / (wacc - crescimento)
-        valor_presente_terminal = valor_terminal / ((1 + wacc) ** anos)
+        fcf_terminal = fcf * ((1 + crescimento_inicial) ** anos_crescimento)
+        valor_terminal = (fcf_terminal * (1 + crescimento_terminal)) / (wacc - crescimento_terminal)
+        valor_presente_terminal = valor_terminal / ((1 + wacc) ** anos_crescimento)
         vpl_total = vpl_fluxo + valor_presente_terminal
 
         numero_acoes = data.get("numberOfShares", 1)
