@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from src.dcf import calcular_vpl_dcf
-from src.wacc import calcular_wacc
+from src.dcf import calcular_valuation_dcf
 import logging
 
 app = FastAPI()
@@ -14,10 +13,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 @app.get("/")
 def read_root():
@@ -29,36 +25,20 @@ def valuation(
     ticker: str = Query(..., description="Código do ativo. Ex: PETR4"),
     rf: float = Query(0.04, description="Taxa livre de risco (ex: 0.04 para 4%)"),
     rm: float = Query(0.10, description="Retorno esperado do mercado (ex: 0.10 para 10%)"),
-    crescimento: float = Query(None, description="Taxa de crescimento perpétuo (formato antigo)"),
-    anos: int = Query(None, description="Anos de projeção (formato antigo)"),
-    crescimento_inicial: float = Query(None, description="Taxa de crescimento no primeiro estágio"),
-    anos_crescimento: int = Query(None, description="Duração do primeiro estágio de crescimento"),
-    crescimento_terminal: float = Query(None, description="Crescimento perpétuo após o primeiro estágio")
+    crescimento_inicial: float = Query(0.10, description="Taxa de crescimento inicial do FCF"),
+    anos_crescimento: int = Query(5, description="Anos de crescimento inicial"),
+    crescimento_terminal: float = Query(0.02, description="Taxa de crescimento perpetuo")
 ):
     try:
-        wacc = calcular_wacc(ticker, rf, rm)
-
-        if crescimento_inicial is not None and anos_crescimento is not None and crescimento_terminal is not None:
-            resultado = calcular_vpl_dcf(
-                ticker=ticker,
-                wacc=wacc,
-                crescimento_inicial=crescimento_inicial,
-                anos_crescimento=anos_crescimento,
-                crescimento_terminal=crescimento_terminal
-            )
-        elif crescimento is not None and anos is not None:
-            resultado = calcular_vpl_dcf(
-                ticker=ticker,
-                wacc=wacc,
-                crescimento_inicial=crescimento,
-                anos_crescimento=anos,
-                crescimento_terminal=crescimento
-            )
-        else:
-            raise ValueError("Parâmetros insuficientes: forneça o conjunto de múltiplos estágios ou o antigo crescimento + anos.")
-
+        resultado = calcular_valuation_dcf(
+            ticker=ticker,
+            rf=rf,
+            rm=rm,
+            crescimento_inicial=crescimento_inicial,
+            anos_crescimento=anos_crescimento,
+            crescimento_terminal=crescimento_terminal
+        )
         return resultado
-
     except Exception as e:
         logging.exception("Erro na rota /valuation")
         return {"erro": str(e)}
